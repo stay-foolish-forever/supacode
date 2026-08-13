@@ -326,6 +326,7 @@ extension SkillAgent {
     case .omp: "Extension in `~/.omp/agent/extensions/` and skill in `~/.omp/agent/skills/`."
     case .opencode: "Plugin in `~/.config/opencode/plugins/` and skill in `~/.config/opencode/skills/`."
     case .pi: "Extension in `~/.pi/agent/extensions/` and skill in `~/.pi/agent/skills/`."
+    case .qoder: "Hooks in `~/.qoder/settings.json` and skill in `~/.qoder/skills/`."
     }
   }
 }

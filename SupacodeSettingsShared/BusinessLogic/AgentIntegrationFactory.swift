@@ -22,6 +22,7 @@ nonisolated enum AgentIntegrationFactory {
       case .omp: omp(homeDirectoryURL: homeDirectoryURL, fileManager: fileManager)
       case .pi: pi(homeDirectoryURL: homeDirectoryURL, fileManager: fileManager)
       case .opencode: opencode(homeDirectoryURL: homeDirectoryURL, fileManager: fileManager)
+      case .qoder: qoder(homeDirectoryURL: homeDirectoryURL, fileManager: fileManager)
       }
     // Gate install on the agent's own config directory existing, as a proxy for
     // the CLI being installed, so Supacode never bootstraps a harness from
@@ -66,6 +67,22 @@ nonisolated enum AgentIntegrationFactory {
         uninstall: { try installer.uninstallAllHooks() }
       ),
       skillsComponent(agent: .claude, homeDirectoryURL: homeDirectoryURL),
+    ]
+  }
+
+  private static func qoder(homeDirectoryURL: URL, fileManager: FileManager)
+    -> [AgentIntegration.Component]
+  {
+    let installer = QoderSettingsInstaller(
+      homeDirectoryURL: homeDirectoryURL, fileManager: fileManager)
+    return [
+      AgentIntegration.Component(
+        kind: .hooks,
+        state: { try installer.installState() },
+        install: { try installer.installAllHooks() },
+        uninstall: { try installer.uninstallAllHooks() }
+      ),
+      skillsComponent(agent: .qoder, homeDirectoryURL: homeDirectoryURL),
     ]
   }
 

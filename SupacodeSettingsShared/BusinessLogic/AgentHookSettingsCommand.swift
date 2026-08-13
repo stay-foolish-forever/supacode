@@ -94,6 +94,24 @@ nonisolated enum AgentHookSettingsCommand {
     return "\(oscGuardExpr) && { \(steps.joined(separator: "; ")); } >/dev/null 2>&1 || true \(ownershipMarker)"
   }
 
+  /// Qoder `StopFailure`: extracts `error_type` from the hook payload and emits
+  /// `.error` plus a fixed notification for fatal agent-side failures. Soft
+  /// stops (`max_output_tokens`) and request errors stay silent because Qoder's
+  /// normal `Stop` hook has already reset the presence state to idle.
+  static func qoderStopFailureCommand(agent: SkillAgent) -> String {
+    let errorBranch =
+      "\(AgentPresenceOSC.emitShell(event: .error, agent: agent)); "
+      + AgentPresenceOSC.emitFixedNotifyShell(
+        agent: agent, title: Self.errorNotifyTitle, body: Self.errorNotifyBody)
+    let steps: [String] = [
+      AgentPresenceOSC.ttyResolveSnippet,
+      #"__input="$(cat)""#,
+      #"__etype=$(printf '%s' "$__input" | { grep -o '"error_type"[[:space:]]*:[[:space:]]*"[^"]*"' || true; } | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//')"#,
+      #"case "$__etype" in rate_limit|authentication_failed|billing_error|server_error|unknown) \#(errorBranch);; esac"#,
+    ]
+    return "\(oscGuardExpr) && { \(steps.joined(separator: "; ")); } >/dev/null 2>&1 || true \(ownershipMarker)"
+  }
+
   /// Fixed headline / body for the error notification the Stop hook raises.
   static let errorNotifyTitle = "Agent error"
   static let errorNotifyBody = "Session stopped on an error"

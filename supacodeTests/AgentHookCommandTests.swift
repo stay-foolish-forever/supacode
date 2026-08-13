@@ -132,6 +132,34 @@ struct AgentHookCommandTests {
     #expect(!command.contains("python"))
   }
 
+  @Test func qoderHookMapUsesStopFailureInsteadOfTranscriptProbing() throws {
+    let groups = try QoderHookSettings.hooksByEvent()
+
+    let stop = try #require(groups["Stop"])
+    let stopCommand = try #require(Self.commandStrings(in: stop).first)
+    #expect(stopCommand.contains("event=idle"))
+    #expect(stopCommand.contains("kind=notify"))
+    #expect(!stopCommand.contains("transcript_path"))
+
+    let stopFailure = try #require(groups["StopFailure"])
+    let stopFailureCommand = try #require(Self.commandStrings(in: stopFailure).first)
+    #expect(stopFailureCommand.contains("error_type"))
+    #expect(stopFailureCommand.contains("event=error"))
+    #expect(!stopFailureCommand.contains("event=idle"))
+    #expect(!stopFailureCommand.contains("jq"))
+    #expect(!stopFailureCommand.contains("python"))
+  }
+
+  @Test func qoderPreToolUseOrdersAwaitingAfterBusy() throws {
+    let groups = try QoderHookSettings.hooksByEvent()
+    let preToolUse = try #require(groups["PreToolUse"])
+    #expect(preToolUse.count == 2)
+    #expect(preToolUse.first?.objectValue?["matcher"]?.stringValue == "")
+    #expect(Self.commandStrings(in: [preToolUse[0]]).first?.contains("event=busy") == true)
+    #expect(preToolUse.last?.objectValue?["matcher"]?.stringValue == "AskUserQuestion|ExitPlanMode")
+    #expect(Self.commandStrings(in: [preToolUse[1]]).first?.contains("event=awaiting_input") == true)
+  }
+
   @Test func compositeGuardsOnSurfaceOnly() {
     // OSC is the only transport now, and signals are unauthenticated: the guard
     // is just the surface id (the no-op-outside-Supacode gate). The token and the
@@ -182,7 +210,7 @@ struct AgentHookCommandTests {
     for groups in [
       try CodexHookSettings.hooksByEvent(), try ClaudeHookSettings.hooksByEvent(),
       try GrokHookSettings.hooksByEvent(), try KiroHookSettings.hooksByEvent(),
-      AntigravityHookSettings.hooksByEvent(),
+      try QoderHookSettings.hooksByEvent(), AntigravityHookSettings.hooksByEvent(),
     ] {
       for eventGroups in groups.values {
         for group in eventGroups {
@@ -701,6 +729,35 @@ struct AgentHookCommandTests {
     #expect(tty.isEmpty)
   }
 
+  // MARK: - Qoder StopFailure payload (real shell).
+
+  private func runQoderStopFailureHook(errorType: String) async throws -> String {
+    try await runHookCommandCapturingTTY(
+      AgentHookSettingsCommand.qoderStopFailureCommand(agent: .qoder),
+      env: ["SUPACODE_SURFACE_ID": UUID().uuidString],
+      stdin: #"{"hook_event_name":"StopFailure","error_type":"\#(errorType)"}"#
+    )
+  }
+
+  @Test func qoderStopFailureEmitsErrorAndNotificationForFatalTypes() async throws {
+    for errorType in [
+      "rate_limit", "authentication_failed", "billing_error", "server_error", "unknown",
+    ] {
+      let tty = try await runQoderStopFailureHook(errorType: errorType)
+      #expect(tty.contains("event=error"))
+      let notify = try #require(Self.parseNotify(fromTTY: tty))
+      #expect(notify.title == AgentHookSettingsCommand.errorNotifyTitle)
+      #expect(notify.body == AgentHookSettingsCommand.errorNotifyBody)
+    }
+  }
+
+  @Test func qoderStopFailureStaysSilentForNonfatalTypes() async throws {
+    for errorType in ["max_output_tokens", "invalid_request", ""] {
+      let tty = try await runQoderStopFailureHook(errorType: errorType)
+      #expect(tty.isEmpty)
+    }
+  }
+
   // MARK: - Stop-hook error transcript probe (real shell).
 
   /// One compact transcript entry; `sessionId` defaults to the current turn's.
@@ -915,6 +972,7 @@ struct AgentHookCommandTests {
       ]
     }
     commands.append(AgentHookSettingsCommand.claudeStopCommand(agent: .claude))
+    commands.append(AgentHookSettingsCommand.qoderStopFailureCommand(agent: .qoder))
     #expect(commands.allSatisfy { !ManagedHookCommandVariables.names(in: $0).isEmpty })
     #expect(commands.allSatisfy { ManagedHookCommandVariables.unexpected(in: $0).isEmpty })
   }

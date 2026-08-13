@@ -13,7 +13,7 @@ struct SkillAgentTests {
     #expect(
       SkillAgent.allCasesByDisplayName.map(\.displayName) == [
         "Claude Code", "Codex", "Copilot CLI", "Google Antigravity", "Grok Code", "Hermes",
-        "Kimi Code", "Kiro CLI", "Oh My Pi", "OpenCode", "Pi",
+        "Kimi Code", "Kiro CLI", "Oh My Pi", "OpenCode", "Pi", "Qoder CLI",
       ]
     )
   }
@@ -37,6 +37,13 @@ struct SkillAgentTests {
     #expect(SkillAgent.kimi.displayName == "Kimi Code")
     #expect(SkillAgent.kimi.configDirectoryName == ".kimi-code")
     #expect(SkillAgent.kimi.assetName == "kimi-mark")
+  }
+
+  @Test func qoderIdentityUsesExpectedRawValueAndPaths() {
+    #expect(SkillAgent.qoder.rawValue == "qoder")
+    #expect(SkillAgent.qoder.displayName == "Qoder CLI")
+    #expect(SkillAgent.qoder.configDirectoryName == ".qoder")
+    #expect(SkillAgent.qoder.assetName == "qoder-mark")
   }
 
   @Test func selectedExistingAgentMappingsStayStable() {
@@ -89,6 +96,61 @@ struct SkillAgentTests {
     await #expect(throws: AgentIntegrationError.notInstalled(.hermes)) {
       try await integration.install()
     }
+  }
+
+  @Test func integrationFactoryReturnsQoderIntegration() async throws {
+    let home = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appending(path: "supacode-qoder-agent-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: home) }
+
+    let configDirectory = home.appending(path: SkillAgent.qoder.configDirectoryName)
+    try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+    let settingsURL = configDirectory.appending(path: "settings.json")
+    try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo user-hook","timeout":5}]}]}}"#
+      .write(to: settingsURL, atomically: true, encoding: .utf8)
+
+    let integration = AgentIntegrationFactory.make(for: .qoder, homeDirectoryURL: home)
+    #expect(integration.agent == .qoder)
+    #expect(try integration.state() == .notInstalled)
+
+    try await integration.install()
+    #expect(try integration.state() == .installed)
+    let firstInstall = try Data(contentsOf: settingsURL)
+    try await integration.install()
+    #expect(try Data(contentsOf: settingsURL) == firstInstall)
+
+    let root = try JSONDecoder().decode(JSONValue.self, from: firstInstall)
+    let hooks = try #require(root.objectValue?["hooks"]?.objectValue)
+    #expect(Set(hooks.keys) == [
+      "Notification", "PostToolUse", "PreCompact", "PreToolUse", "SessionEnd",
+      "SessionStart", "Stop", "StopFailure", "UserPromptSubmit",
+    ])
+    let stopCommands = hooks["Stop"]?.arrayValue?.flatMap { group in
+      group.objectValue?["hooks"]?.arrayValue?.compactMap {
+        $0.objectValue?["command"]?.stringValue
+      } ?? []
+    } ?? []
+    #expect(stopCommands.contains("echo user-hook"))
+    #expect(stopCommands.contains { $0.hasSuffix(AgentHookSettingsCommand.ownershipMarker) })
+
+    for skill in ["supacode-cli", "supacode-deeplinks"] {
+      #expect(
+        FileManager.default.fileExists(
+          atPath: configDirectory.appending(path: "skills/\(skill)/SKILL.md").path(percentEncoded: false)
+        )
+      )
+    }
+
+    try integration.uninstall()
+    let uninstalledRoot = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: settingsURL))
+    let remainingHooks = try #require(uninstalledRoot.objectValue?["hooks"]?.objectValue)
+    let remainingStopCommands = remainingHooks["Stop"]?.arrayValue?.flatMap { group in
+      group.objectValue?["hooks"]?.arrayValue?.compactMap {
+        $0.objectValue?["command"]?.stringValue
+      } ?? []
+    } ?? []
+    #expect(remainingStopCommands == ["echo user-hook"])
+    #expect(Set(remainingHooks.keys) == ["Stop"])
   }
 
   @Test func integrationFactoryReturnsAntigravityIntegration() async throws {

@@ -13,10 +13,12 @@ public nonisolated enum SkillAgent: String, Equatable, Sendable, CaseIterable, C
   case opencode
   // swiftlint:disable:next identifier_name
   case pi
+  case qoder
 
   /// Path under the user's home where the agent stores its config
   /// (e.g. `.gemini/antigravity-cli`, `.claude`, `.codex`, `.copilot`, `.grok`,
-  /// `.hermes`, `.kimi-code`, `.kiro`, `.omp/agent`, `.pi/agent`, `.config/opencode`).
+  /// `.hermes`, `.kimi-code`, `.kiro`, `.omp/agent`, `.pi/agent`,
+  /// `.config/opencode`, `.qoder`).
   public var configDirectoryName: String {
     switch self {
     case .antigravity: ".gemini/antigravity-cli"
@@ -30,6 +32,7 @@ public nonisolated enum SkillAgent: String, Equatable, Sendable, CaseIterable, C
     case .omp: ".omp/agent"
     case .opencode: ".config/opencode"
     case .pi: ".pi/agent"
+    case .qoder: ".qoder"
     }
   }
 
@@ -47,6 +50,7 @@ public nonisolated enum SkillAgent: String, Equatable, Sendable, CaseIterable, C
     case .omp: "Oh My Pi"
     case .opencode: "OpenCode"
     case .pi: "Pi"
+    case .qoder: "Qoder CLI"
     }
   }
 
@@ -64,6 +68,7 @@ public nonisolated enum SkillAgent: String, Equatable, Sendable, CaseIterable, C
     case .omp: "omp-mark"
     case .opencode: "opencode-mark"
     case .pi: "pi-mark"
+    case .qoder: "qoder-mark"
     }
   }
 
